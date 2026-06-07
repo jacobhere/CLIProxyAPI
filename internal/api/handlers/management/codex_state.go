@@ -218,6 +218,9 @@ func buildCodexStateEntry(auth *coreauth.Auth) gin.H {
 	if email := authEmail(auth); email != "" {
 		entry["email"] = email
 	}
+	if note := codexStateNote(auth); note != "" {
+		entry["note"] = note
+	}
 	if accountType, account := auth.AccountInfo(); accountType != "" || account != "" {
 		if accountType != "" {
 			entry["account_type"] = accountType
@@ -273,6 +276,21 @@ func buildCodexStateAccountLabel(auth *coreauth.Auth) string {
 	}
 	_, account := auth.AccountInfo()
 	return strings.TrimSpace(account)
+}
+
+func codexStateNote(auth *coreauth.Auth) string {
+	if auth == nil {
+		return ""
+	}
+	if note := strings.TrimSpace(authAttribute(auth, "note")); note != "" {
+		return note
+	}
+	if rawNote, ok := auth.Metadata["note"].(string); ok {
+		if trimmed := strings.TrimSpace(rawNote); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func codexStateName(auth *coreauth.Auth) string {

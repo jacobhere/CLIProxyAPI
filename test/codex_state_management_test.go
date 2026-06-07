@@ -117,9 +117,13 @@ func newCodexManagementHandler(t *testing.T) (*management.Handler, *coreauth.Man
 		ID:       "codex-oauth-id",
 		Provider: "codex",
 		FileName: "codex-oauth.json",
+		Attributes: map[string]string{
+			"note": "  Team Alpha  ",
+		},
 		Metadata: map[string]any{
 			"email":    "oauth@example.com",
 			"id_token": fakeCodexJWT("oauth@example.com", "acct_123", "plus"),
+			"note":     "metadata note should lose",
 		},
 		Status: coreauth.StatusActive,
 	}
@@ -204,6 +208,9 @@ func TestGetCodexState(t *testing.T) {
 	if item["email"] != "oauth@example.com" {
 		t.Fatalf("expected email, got %#v", item["email"])
 	}
+	if item["note"] != "Team Alpha" {
+		t.Fatalf("expected trimmed attribute note precedence, got %#v", item["note"])
+	}
 	if item["codex_manual_score_adjustment"].(float64) != 1.5 {
 		t.Fatalf("expected manual score 1.5, got %#v", item["codex_manual_score_adjustment"])
 	}
@@ -244,6 +251,40 @@ func TestGetCodexState(t *testing.T) {
 	}
 	if idToken["plan_type"] != "plus" {
 		t.Fatalf("unexpected plan_type: %#v", idToken["plan_type"])
+	}
+}
+
+func TestGetCodexState_FallsBackToTrimmedMetadataNote(t *testing.T) {
+	h, manager, _, oauthAuth, _, _ := newCodexManagementHandler(t)
+	updated, ok := manager.GetByID(oauthAuth.ID)
+	if !ok {
+		t.Fatalf("expected auth to exist")
+	}
+	delete(updated.Attributes, "note")
+	updated.Metadata["note"] = "  Metadata Team  "
+	if _, err := manager.Update(context.Background(), updated); err != nil {
+		t.Fatalf("update auth: %v", err)
+	}
+
+	r := setupCodexManagementRouter(h)
+	req := httptest.NewRequest(http.MethodGet, "/v0/management/codex-state", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+
+	var resp map[string][]map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	items := resp["codex-state"]
+	if len(items) != 1 {
+		t.Fatalf("expected 1 codex runtime auth, got %d", len(items))
+	}
+	if items[0]["note"] != "Metadata Team" {
+		t.Fatalf("expected trimmed metadata note fallback, got %#v", items[0]["note"])
 	}
 }
 
